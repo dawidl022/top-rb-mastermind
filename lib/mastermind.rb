@@ -1,5 +1,7 @@
 require 'colorize'
 
+# TODO extract all I/O into methods for easy porting to e.g. a GUI
+
 def pad_array(arr, to_size)
   Array.new(to_size).each_with_index.map { |_, index| arr[index] }
 end
@@ -15,22 +17,47 @@ module Validatable
 
     until valid_input
       if user_input
-        puts "Invalid input: please enter an integer number."
+        puts "Invalid input. Please input one of the following:"
+        puts "#{options.map { |option| "#{option.to_s}" }}"
         put_blank_line
       end
 
       print message
-      user_input = gets.chomp.to_sym
+      user_input = gets.chomp.downcase.to_sym
       valid_input = user_input if options.include?(user_input)
     end
 
     valid_input
   end
+
+  def yes_no_input(message)
+    answer = input_option(message + ' [Y/n]: ', [:yes, :y, :no, :n])
+
+    answer == :yes || answer == :y
+  end
 end
 
-class MainMenu; end
+class MainMenu
+  def start
+    # TODO update once rest of game logic is settled, add configurable game
+    # options from menu
+    guesser = HumanGuesser.new
+    maker = ComputerMaker.new
+    game = Mastermind.new(guesser, maker, :medium, 12, 2)
+    game.play_game
+  end
+end
 
-class HumanGuesser
+
+class Player
+  attr_accessor :points
+
+  def initialize
+    @points = 0
+  end
+end
+
+class HumanGuesser < Player
   include Validatable
   SEPARATOR = "        "
 
@@ -42,6 +69,10 @@ class HumanGuesser
     input_option("Please enter your guess for slot #{slot}: ", colours)
   end
 
+  def confirm_guess?
+    yes_no_input("Are you ready to end your turn?")
+  end
+
   private
 
   def format_colours(colours)
@@ -49,7 +80,8 @@ class HumanGuesser
   end
 end
 
-class ComputerMaker
+
+class ComputerMaker < Player
   def choose_colours(colours)
     Array.new(4).map { colours.sample }
   end
@@ -60,18 +92,31 @@ class Mastermind
   CORRECT_COLOUR_MARKER = :white
   CLASSIC_COLOURS = [:red, :magenta, :yellow, :green, :cyan, :blue]
 
-  def initialise(guesser, maker, difficulty, turns, rounds)
+  def initialize(guesser, maker, difficulty, turns, rounds)
+    if rounds.even?
+      @rounds = rounds
+    else
+      raise "Number of rounds must be even!"
+    end
+
     @guesser = guesser
     @maker = maker
     @possible_colours = colours_for_difficulty(difficulty)
     @turns = turns
-    @rounds = rounds
     @board = Board.new(number_of_rows: turns)
   end
 
   public
 
   def play_game
+    @rounds.times do
+      play_round
+      # TODO remove break
+      break
+    end
+
+    # temporary result of game
+    puts "Maker scored #{@maker.points} points."
   end
 
   private
@@ -88,7 +133,7 @@ class Mastermind
 
     print_current_board
 
-    (0...@turns).each do |turn|
+    turns_played = (1..@turns).each do |turn|
       hints = grade_guess(chosen_colours, guessed_colours)
       @board.insert_hints(hints)
       print_current_board
@@ -98,7 +143,7 @@ class Mastermind
       @board.increment_turn
     end
 
-    # TODO allocate points for round
+    allocate_score(turns_played)
   end
 
   def guesser_won?(hints)
@@ -107,8 +152,8 @@ class Mastermind
 
   def guessed_colours
     loop do
-      take_guesses
-      break if @guesser.confirm_guess
+      guesses = take_guesses
+      break guesses if @guesser.confirm_guess?
     end
   end
 
@@ -122,6 +167,60 @@ class Mastermind
       guess
     end
   end
+
+  def print_current_board
+    puts @board.current_board
+  end
+
+  def grade_guess(answer, guess)
+    colours_left = answer.clone
+
+    mark_colour = Proc.new do |colour|
+      pos_to_remove = colours_left.index(colour)
+      colours_left.delete_at(pos_to_remove) if pos_to_remove
+    end
+
+    grade = guess.each_with_index.map do |guessed_colour, index|
+      # Check for colours in correct positions
+      if guessed_colour == answer[index]
+        # Mark colour as already handled to avoid duplicate (redundant) feedback
+        mark_colour.call(guessed_colour)
+        CORRECT_SPOT_MARKER
+      end
+    end.each_with_index.map do |previous_result, index|
+      # Check for correct colours but in wrong positions
+      guessed_colour = guess[index]
+      if guessed_colour != answer[index] && colours_left.include?(guessed_colour)
+        mark_colour.call(guessed_colour)
+        CORRECT_COLOUR_MARKER
+      else
+        previous_result
+      end
+    end
+
+    shuffle_differently(grade)
+  end
+
+  def allocate_score(turns)
+    if turns == 12
+      @maker.points += 13
+    else
+      @maker.points += turns
+    end
+  end
+
+  def shuffle_differently(array)
+    if array.tally.length <= 1
+      return array
+    end
+
+    shuffled = array
+    while shuffled == array
+      shuffled = array.shuffle
+    end
+    shuffled
+  end
+
 end
 
 class Row
@@ -200,4 +299,8 @@ class Board
       end
     end.join("\n")
   end
+end
+
+if __FILE__ == $PROGRAM_NAME
+  MainMenu.new.start
 end

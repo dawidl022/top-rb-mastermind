@@ -177,11 +177,18 @@ RSpec.describe HumanGuesser do
 
   before do
     $stdin = input
-    input.string = "cyan\n"
     allow(output_mock).to receive(:write)
   end
 
+  after do
+    $stdout = STDOUT
+  end
+
   describe "#guess_colour" do
+    before do
+      input.string = "cyan\n"
+    end
+
     it "prints possible colours and prompts player to choose for slot 1" do
       expect { guesser.guess_colour(colours, 1) }.to output(
         "Available colours:\n" \
@@ -202,8 +209,122 @@ RSpec.describe HumanGuesser do
       expect(guesser.guess_colour(colours, 1)).to eq(:red)
     end
   end
+
+  describe "#confirm_guess? is case insensitive and returns" do
+    before do
+      $stdout = output_mock
+    end
+
+    it "true given yes as input" do
+      input.string = "Yes\n"
+      expect(guesser.confirm_guess?).to be true
+    end
+
+    it "false given no as input" do
+      input.string = "NO\n"
+      expect(guesser.confirm_guess?).to be false
+    end
+  end
 end
 
 RSpec.describe Mastermind do
+  # STUB players and pass arguments to new method
+  let(:game) do
+    maker = double("ComputerMaker")
+    guesser = double("HumanGuesser")
+    described_class.new(guesser, maker, :medium, 12, 2)
+  end
+  CORRECT_COLOUR = described_class::CORRECT_COLOUR_MARKER
+  CORRECT_SPOT = described_class::CORRECT_SPOT_MARKER
 
+  describe "#grade_guess" do
+    answer = [:red, :green, :yellow, :magenta]
+    guess = [:blue, :blue, :red, :magenta]
+    expected_outcome = [nil, nil, CORRECT_COLOUR, CORRECT_SPOT]
+    let(:actual) { game.send(:grade_guess, answer, guess) }
+
+    it "returns an array" do
+      expect(actual.class).to be Array
+    end
+
+    it "the grade does not depict the positioning on the board" do
+      expect(actual).to_not eq(expected_outcome)
+    end
+
+    it "has the same elements as expected" do
+      expect(actual.tally).to eq(expected_outcome.tally)
+    end
+
+    describe "handles edge case" do
+      before do
+        # DISABLE SCRAMBLING OF FEEDBACK
+        allow(game).to receive(:shuffle_differently) do |array|
+          array
+        end
+      end
+
+      describe "more duplicate colours guessed than in answer" do
+
+        it 'all in correct position' do
+          answer = [:red, :red, :blue, :blue]
+          guess = [:red, :red, :red, :blue]
+          expected_outcome = [CORRECT_SPOT, CORRECT_SPOT, nil, CORRECT_SPOT]
+
+          expect(game.send(:grade_guess, answer, guess)).to eq(expected_outcome)
+        end
+
+        it '1 in correct position' do
+          answer = [:red, :red, :blue, :blue]
+          guess = [:blue, :red, :red, :red]
+          expected_outcome = [CORRECT_COLOUR, CORRECT_SPOT, CORRECT_COLOUR, nil]
+
+          expect(game.send(:grade_guess, answer, guess)).to eq(expected_outcome)
+        end
+
+        it '1 in correct position, different position' do
+          answer = [:red, :red, :red, :blue]
+          guess = [:blue, :blue, :red, :red]
+          expected_outcome = [CORRECT_COLOUR, nil, CORRECT_SPOT, CORRECT_COLOUR]
+
+          expect(game.send(:grade_guess, answer, guess)).to eq(expected_outcome)
+        end
+
+        it '1 in correct position, 2 not in correct position, 1 redundant' do
+          answer = [:yellow, :yellow, :magenta, :magenta]
+          guess = [:magenta, :magenta, :yellow, :magenta]
+          expected_outcome = [CORRECT_COLOUR, nil, CORRECT_COLOUR, CORRECT_SPOT]
+
+          expect(game.send(:grade_guess, answer, guess)).to eq(expected_outcome)
+        end
+      end
+
+      it 'starting colour not correct when when redundant in solution' do
+        answer = [:yellow, :yellow, :magenta, :magenta]
+        guess = [:magenta, :yellow, :magenta, :magenta]
+        expected_outcome = [nil, CORRECT_SPOT, CORRECT_SPOT, CORRECT_SPOT]
+
+        expect(game.send(:grade_guess, answer, guess)).to eq(expected_outcome)
+      end
+
+      it 'all colours in wrong position, but correct' do
+        answer = [:yellow, :yellow, :magenta, :magenta]
+        guess = [:magenta, :magenta, :yellow, :yellow]
+        expected_outcome = Array.new(4, CORRECT_COLOUR)
+
+        expect(game.send(:grade_guess, answer, guess)).to eq(expected_outcome)
+      end
+    end
+  end
+
+  describe "#shuffle_differently" do
+    it "returns different array if possible" do
+      input_array = [CORRECT_COLOUR, nil, CORRECT_SPOT, CORRECT_COLOUR]
+      expect(game.send(:shuffle_differently, input_array)).to_not eq(input_array)
+    end
+
+    it "returns same array when all elements are the same" do
+      input_array = Array.new(4, CORRECT_SPOT)
+      expect(game.send(:shuffle_differently, input_array)).to eq(input_array)
+    end
+  end
 end
