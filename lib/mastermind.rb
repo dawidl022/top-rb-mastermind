@@ -38,14 +38,42 @@ module Validatable
 end
 
 class MainMenu
+  include Validatable
+
+  NAME_ART =
+  "╔╦╗┌─┐┌─┐┌┬┐┌─┐┬─┐┌┬┐┬┌┐┌┌┬┐\n" \
+  "║║║├─┤└─┐ │ ├┤ ├┬┘│││││││ ││\n" \
+  "╩ ╩┴ ┴└─┘ ┴ └─┘┴└─┴ ┴┴┘└┘─┴┘\n"
+
   def start
+    puts NAME_ART
+    game_type = input_option("Play as maker or guesser? ", [:maker, :guesser])
+
+    case game_type
+    when :maker
+      play_as_maker
+    when :guesser
+      play_as_guesser
+    else raise "Bad argument"
+    end
     # TODO update once rest of game logic is settled, add configurable game
     # options from menu
-    # guesser = HumanGuesser.new
-    # maker = ComputerMaker.new
+  end
+
+  def play_as_guesser
+    guesser = HumanGuesser.new
+    maker = ComputerMaker.new
+    play(guesser, maker)
+  end
+
+  def play_as_maker
     guesser = EasyComputerGuesser.new
     maker = HumanMaker.new
-    game = Mastermind.new(guesser, maker, :medium, 12, 2)
+    play(guesser, maker)
+  end
+
+  def play(guesser, maker)
+    game = Mastermind.new(guesser, maker, :medium, 12, 1)
     game.play_game
   end
 end
@@ -168,7 +196,7 @@ class HumanMaker < HumanPlayer
     Array.new(4).each_index.map do |index|
       slot = index + 1
       colour = input_option(
-        "Please set a colour for slow guess for slot #{slot}: ", colours
+        "Please set a colour for slot #{slot}: ", colours
       )
     end
   end
@@ -180,11 +208,11 @@ class Mastermind
   CLASSIC_COLOURS = [:red, :magenta, :yellow, :green, :cyan, :blue]
 
   def initialize(guesser, maker, difficulty, turns, rounds)
-    if rounds.even?
+    # if rounds.even?
       @rounds = rounds
-    else
-      raise "Number of rounds must be even!"
-    end
+    # else
+    #   raise "Number of rounds must be even!"
+    # end
 
     @guesser = guesser
     @maker = maker
@@ -198,8 +226,6 @@ class Mastermind
   def play_game
     @rounds.times do
       play_round
-      # TODO remove break
-      break
     end
 
     # temporary result of game
