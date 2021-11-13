@@ -41,8 +41,10 @@ class MainMenu
   def start
     # TODO update once rest of game logic is settled, add configurable game
     # options from menu
-    guesser = HumanGuesser.new
-    maker = ComputerMaker.new
+    # guesser = HumanGuesser.new
+    # maker = ComputerMaker.new
+    guesser = EasyComputerGuesser.new
+    maker = HumanMaker.new
     game = Mastermind.new(guesser, maker, :medium, 12, 2)
     game.play_game
   end
@@ -57,10 +59,83 @@ class Player
   end
 end
 
-class HumanGuesser < Player
+# Easy difficulty, get to colours strategically, then randomly order them
+class EasyComputerGuesser < Player
+  def initialize
+    super
+    @last_feedback = Array.new(4)
+    @guessed_colours = []
+    @guess = Array.new(4)
+    @guess_indices = Array.new(4)
+  end
+
+  public
+
+  def take_feedback(feedback)
+    @last_feedback = feedback
+  end
+
+  def guess_colour(colours, slot)
+    if slot == 1
+      prepare_guess(colours)
+    end
+
+    @guess[slot - 1]
+  end
+
+  def confirm_guess?
+    true
+  end
+
+  private
+
+  def prepare_guess(colours)
+    old_guess = @guess_indices.clone
+
+    correct = 4 - @last_feedback.count(nil)
+
+    # separate old guesses from new ones
+    border = @guessed_colours.length
+
+    # at each guess at most 1 new colour is guessed, at index of border
+    newly_found = correct - border
+    if newly_found
+      @guessed_colours.concat(Array.new(newly_found, old_guess[border]))
+    end
+
+    # first guess
+    if old_guess == [nil, nil, nil, nil]
+      @guess_indices = Array.new(4, 0)
+
+    # keep testing new colours until all are found
+    elsif @last_feedback.include?(nil)
+
+      # include already found colours in next guess, pad rest with a new colour
+      @guess_indices = @guessed_colours.clone
+      left_to_guess = 4 - correct
+      @guess_indices.concat(Array.new(left_to_guess, old_guess[border] + 1))
+
+    else
+      @guess_indices = @guessed_colours.shuffle
+    end
+
+    @guess = @guess_indices.map { |index| colours[index] }
+  end
+end
+
+class HumanPlayer < Player
   include Validatable
+
   SEPARATOR = "        "
 
+  private
+
+  def format_colours(colours)
+    colours.map { |colour| colour.to_s.colorize(colour).bold }.join(SEPARATOR)
+  end
+end
+
+class HumanGuesser < HumanPlayer
   public
 
   def guess_colour(colours, slot)
@@ -73,10 +148,8 @@ class HumanGuesser < Player
     yes_no_input("Are you ready to end your turn?")
   end
 
-  private
-
-  def format_colours(colours)
-    colours.map { |colour| colour.to_s.colorize(colour).bold }.join(SEPARATOR)
+  def take_feedback
+    # Feedback is displayed visually, so no action here
   end
 end
 
@@ -84,6 +157,20 @@ end
 class ComputerMaker < Player
   def choose_colours(colours)
     Array.new(4).map { colours.sample }
+  end
+end
+
+class HumanMaker < HumanPlayer
+  def choose_colours(colours)
+    puts "Available colours:"
+    puts format_colours(colours)
+
+    Array.new(4).each_index.map do |index|
+      slot = index + 1
+      colour = input_option(
+        "Please set a colour for slow guess for slot #{slot}: ", colours
+      )
+    end
   end
 end
 
@@ -136,9 +223,10 @@ class Mastermind
     turns_played = (1..@turns).each do |turn|
       hints = grade_guess(chosen_colours, guessed_colours)
       @board.insert_hints(hints)
+      @guesser.take_feedback(hints)
       print_current_board
 
-      break turn if guesser_won?(hints)
+      break turn if guesser_won?(hints) || turn == @turns
 
       @board.increment_turn
     end
