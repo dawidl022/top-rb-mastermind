@@ -176,7 +176,7 @@ class HumanGuesser < HumanPlayer
     yes_no_input("Are you ready to end your turn?")
   end
 
-  def take_feedback
+  def take_feedback(_feedback)
     # Feedback is displayed visually, so no action here
   end
 end
